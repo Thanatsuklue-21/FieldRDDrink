@@ -28,10 +28,12 @@ npm run build
 ## Research Hub & Formula Evaluator
 
 - Research Hub stores evidence by menu from peer-reviewed papers, official guides, product pages, professional sources, YouTube, Lemon8, Gemini/AI summaries and other social sources.
+- AI Research Scout can generate multi-channel searches automatically, discover public HTTPS sources, fetch readable previews, extract obvious measurements, and stage the result as **unverified Evidence** for review. Discovery never auto-verifies or auto-locks a formula.
 - Public HTTPS URLs can be ingested through `/api/research`. The server-side fetcher blocks private/local network targets, re-validates redirects, limits payload size and strips executable HTML before returning a text preview.
 - YouTube ingestion currently imports public oEmbed metadata only; transcript/formula values still require verified transcript/manual evidence.
 - JavaScript-heavy or access-restricted Gemini/Lemon8 pages may return partial or no extract. The UI explicitly supports manual URL + verified notes rather than inventing missing content.
 - Internet evidence is ranked by source class, relevance and verification, but cannot PASS or LOCK a FIELD formula by itself.
 - Trials can record structured 0–5 scores for Taste, Body, Character, T10/Dilution and Overall, plus Evidence refs.
 - Formula Evaluator ranks only actually tested trials; PLANNED/RUNNING candidates are excluded. It reports sensory score, confidence and the next validation need.
+- AI R&D Advisor converts actual sensory defects into a **single-variable PLANNED candidate**, explains why that variable is being changed, links available evidence, and blocks duplicate candidates. `SENSORY_LOCKED` and `LOCKED` formulas are never mutated automatically.
 - Historical trials without structured scores remain valid evidence and are labelled as needing structured scoring instead of receiving fabricated numbers.

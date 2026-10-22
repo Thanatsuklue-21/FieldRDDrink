@@ -134,3 +134,115 @@ export function trialValidationErrors(trial,requiredLockGates=["repeatability","
   }
   return errors;
 }
+
+
+function cleanText(v=""){return String(v||"").trim()}
+function lowerText(v=""){return cleanText(v).toLowerCase()}
+export function formulaItems(formula=""){
+  return String(formula).split(/[·\n]/).map(x=>x.trim()).filter(Boolean).map(segment=>{
+    const m=segment.match(/^(.*?)(-?\d+(?:\.\d+)?)\s*(g|ml|mL|กรัม|มล\.?)\b/i);
+    if(!m)return null;
+    return{segment,name:m[1].trim(),amount:Number(m[2]),amountText:m[2],unit:m[3]};
+  }).filter(Boolean);
+}
+function fieldScore(trial,key){const x=Number(trial?.[key]);return Number.isFinite(x)&&x>=0&&x<=5?x:null}
+function feedbackText(trial){return [trial?.t0,trial?.t5,trial?.t10,trial?.t15,trial?.notes].map(lowerText).filter(Boolean).join(" · ")}
+function hasAny(text,terms){return terms.some(x=>text.includes(x))}
+function pickItem(items,re){return items.find(x=>re.test(x.name))}
+function roundedStep(value,delta,step){
+  const raw=Math.max(step,value+delta);
+  return Math.round(raw/step)*step;
+}
+function replaceItemAmount(formula,item,next){
+  const nextText=Number.isInteger(next)?String(next):String(Number(next.toFixed(2)));
+  return String(formula).replace(item.segment,item.segment.replace(item.amountText,nextText));
+}
+function strongestSources(menu,sources=[]){
+  return sources.filter(s=>s.menu===menu).map(s=>({...s,_score:sourceEvidenceScore(s)})).sort((a,b)=>{
+    if(Boolean(a.verified)!==Boolean(b.verified))return a.verified?-1:1;
+    return b._score-a._score;
+  }).slice(0,3);
+}
+export function researchQueriesForTrial(trial){
+  if(!trial?.menu)return[];
+  const text=feedbackText(trial);
+  const focus=hasAny(text,["หวานนำ","หวานไป","too sweet","sweet-forward"])?"sweetness balance":
+    hasAny(text,["มัทฉะบาง","ชาอ่อน","กาแฟอ่อน","โกโก้อ่อน","รสหลักบาง","weak character"])?"flavor intensity":
+    hasAny(text,["จาง","น้ำเยอะ","dilut","watery"])?"dilution":
+    "sensory recipe";
+  const menu=cleanText(trial.menu);
+  return[
+    {channel:"WEB",query:menu+" "+focus+" recipe grams"},
+    {channel:"YOUTUBE",query:menu+" "+focus+" recipe grams barista"},
+    {channel:"LEMON8",query:menu+" สูตร "+focus},
+    {channel:"PEER_REVIEWED",query:menu+" sensory extraction "+focus},
+    {channel:"PRODUCT_PAGE",query:menu+" official ingredient preparation guide"}
+  ];
+}
+export function buildCandidateRecommendation(trial,trials=[],sources=[]){
+  if(!trial)return{state:"NO_TRIAL",canCreate:false,reason:"ยังไม่มี Trial ที่ใช้เป็นฐาน"};
+  if(["LOCKED","SENSORY_LOCKED"].includes(trial.status))return{state:"LOCKED",canCreate:false,reason:"สูตรถูกล็อกแล้ว ระบบจะไม่เปลี่ยนสูตรอัตโนมัติ; ให้ทำ validation ที่ค้างอยู่แทน",baseTrialId:trial.id};
+  if(["PLANNED","RUNNING"].includes(trial.status))return{state:"NOT_TESTED",canCreate:false,reason:"ต้องมีผลทดลองจริงก่อนจึงจะสร้างสูตรถัดไป",baseTrialId:trial.id};
+  const e=evaluateTrialWithEvidence(trial,sources);
+  const text=feedbackText(trial);
+  const items=formulaItems(trial.formula);
+  if(!items.length)return{state:"UNPARSEABLE",canCreate:false,reason:"สูตรฐานไม่มีปริมาณ g/mL ที่ระบบอ่านเพื่อเปลี่ยนตัวแปรเดียวได้",baseTrialId:trial.id};
+
+  let rule=null,item=null,next=null,why="";
+  const sweet=pickItem(items,/(syrup|น้ำเชื่อม|นมข้นหวาน|condensed|sugar|น้ำตาล)/i);
+  const identity=pickItem(items,/(matcha|มัทฉะ|thai tea|green tea|jasmine|ชา|coffee|กาแฟ|cocoa|โกโก้)/i);
+  const water=pickItem(items,/(water|น้ำ)/i);
+  const milk=pickItem(items,/(milk|นม|evap|cream)/i);
+
+  if(sweet&&hasAny(text,["หวานนำ","หวานไป","หวานเกิน","too sweet","sweet-forward"])){
+    rule="REDUCE_SWEETENER";item=sweet;next=roundedStep(item.amount,-5,5);
+    why="ผลชิมระบุว่าความหวานนำ จึงลด "+(item.name||"sweetener")+" เพียงตัวเดียวก่อน เพื่อดูว่ารสหลักชัดขึ้นโดยไม่เพิ่มผง/ชาและไม่เปลี่ยนตัวแปรอื่น";
+  }else if(identity&&hasAny(text,["มัทฉะบาง","ชาอ่อน","กาแฟอ่อน","โกโก้อ่อน","รสหลักบาง","weak character","flavor faint"])){
+    rule="INCREASE_IDENTITY";item=identity;const step=item.amount<=10?1:5;next=roundedStep(item.amount,step,step);
+    why="ผลชิมระบุว่ารสหลักบาง จึงเพิ่ม "+(item.name||"วัตถุดิบรสหลัก")+" เพียงตัวเดียวใน step เล็ก เพื่อทดสอบ Character โดยคงความหวาน นม น้ำ และ process เดิม";
+  }else if(water&&hasAny(text,["จาง","น้ำเยอะ","dilut","watery"])){
+    rule="REDUCE_WATER";item=water;next=roundedStep(item.amount,-10,5);
+    why="ผลชิมชี้ไปที่ dilution จึงลด "+(item.name||"น้ำ")+" เพียงตัวเดียว เพื่อเพิ่ม concentration โดยไม่เปลี่ยนวัตถุดิบรสหลัก";
+  }else{
+    const scored=SCORE_FIELDS.map(([k,l])=>({k,l,v:fieldScore(trial,k)})).filter(x=>x.v!==null).sort((a,b)=>a.v-b.v);
+    const weakest=scored[0];
+    if(weakest?.k==="scoreIdentity"&&identity){rule="INCREASE_IDENTITY";item=identity;const step=item.amount<=10?1:5;next=roundedStep(item.amount,step,step);why="Structured Score ต่ำสุดคือ "+weakest.l+" "+weakest.v+"/5 จึงทดสอบเพิ่ม "+(item.name||"วัตถุดิบรสหลัก")+" เพียงตัวเดียว";}
+    else if(weakest?.k==="scoreDilution"&&water){rule="REDUCE_WATER";item=water;next=roundedStep(item.amount,-10,5);why="Structured Score ต่ำสุดคือ "+weakest.l+" "+weakest.v+"/5 จึงทดสอบลด "+(item.name||"น้ำ")+" เพียงตัวเดียว";}
+    else if(weakest?.k==="scoreBody"&&milk&&hasAny(text,["บาง","body","thin"])){rule="INCREASE_BODY";item=milk;next=roundedStep(item.amount,10,5);why="Body เป็นจุดอ่อนและมี feedback ว่าเนื้อบาง จึงเพิ่ม "+(item.name||"นม")+" เพียงตัวเดียว";}
+  }
+  if(!rule||!item||next===null||next===item.amount)return{state:"NEEDS_HUMAN_DIRECTION",canCreate:false,reason:"ข้อมูลผลชิมยังไม่ชี้ทิศทางการเปลี่ยนตัวแปรเดียวอย่างปลอดภัย ระบบจึงไม่เดาสูตร",baseTrialId:trial.id,researchQueries:researchQueriesForTrial(trial)};
+
+  const changed=(item.name||"ตัวแปร")+" "+item.amount+" → "+next+" "+item.unit;
+  const formula=replaceItemAmount(trial.formula,item,next);
+  const evidence=strongestSources(trial.menu,sources);
+  const refs=[...new Set([...parseSourceRefs(trial.sourceRefs),...evidence.map(s=>s.id)])];
+  const duplicate=trials.find(x=>x.id!==trial.id&&x.menu===trial.menu&&["PLANNED","RUNNING"].includes(x.status)&&cleanText(x.formula)===cleanText(formula));
+  const evidenceBoost=evidence.length?Math.round(evidence.reduce((a,s)=>a+s._score,0)/evidence.length/10):0;
+  const confidence=Math.max(0,Math.min(100,e.confidence+10+evidenceBoost));
+  return{
+    state:duplicate?"DUPLICATE":"READY",
+    canCreate:!duplicate,
+    baseTrialId:trial.id,
+    duplicateTrialId:duplicate?.id||null,
+    rule,
+    changed,
+    formula,
+    why,
+    confidence,
+    evidenceRefs:refs,
+    researchQueries:researchQueriesForTrial(trial),
+    candidate:{
+      ...trial,
+      id:"",
+      status:"PLANNED",
+      changed,
+      constants:"อ้างอิง "+trial.id+"; คงตัวแปรอื่นทั้งหมดจากสูตรฐาน",
+      formula,
+      sourceRefs:refs.join(" · "),
+      t0:"",t5:"",t10:"",t15:"",
+      scoreTaste:"",scoreBody:"",scoreIdentity:"",scoreDilution:"",scoreOverall:"",
+      notes:"AI/Evidence candidate จาก "+trial.id+": "+why,
+      repeatability:false,dilution:false,cupIce:false,costing:false,sop:false,pos:false,qc:false
+    }
+  };
+}
