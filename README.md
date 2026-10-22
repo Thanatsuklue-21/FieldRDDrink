@@ -23,3 +23,15 @@ npm install
 npm test
 npm run build
 ```
+
+
+## Research Hub & Formula Evaluator
+
+- Research Hub stores evidence by menu from peer-reviewed papers, official guides, product pages, professional sources, YouTube, Lemon8, Gemini/AI summaries and other social sources.
+- Public HTTPS URLs can be ingested through `/api/research`. The server-side fetcher blocks private/local network targets, re-validates redirects, limits payload size and strips executable HTML before returning a text preview.
+- YouTube ingestion currently imports public oEmbed metadata only; transcript/formula values still require verified transcript/manual evidence.
+- JavaScript-heavy or access-restricted Gemini/Lemon8 pages may return partial or no extract. The UI explicitly supports manual URL + verified notes rather than inventing missing content.
+- Internet evidence is ranked by source class, relevance and verification, but cannot PASS or LOCK a FIELD formula by itself.
+- Trials can record structured 0–5 scores for Taste, Body, Character, T10/Dilution and Overall, plus Evidence refs.
+- Formula Evaluator ranks only actually tested trials; PLANNED/RUNNING candidates are excluded. It reports sensory score, confidence and the next validation need.
+- Historical trials without structured scores remain valid evidence and are labelled as needing structured scoring instead of receiving fabricated numbers.
