@@ -28,7 +28,7 @@ async function assertPublicUrl(raw){
 async function safeFetch(raw,limit=4){
   let current=await assertPublicUrl(raw);
   for(let i=0;i<limit;i++){
-    const r=await fetch(current,{redirect:"manual",headers:{"user-agent":"FIELD-RD-Research/1.0","accept":"text/html,application/json,text/plain;q=0.9,*/*;q=0.5"}});
+    const r=await fetch(current,{redirect:"manual",signal:AbortSignal.timeout(8000),headers:{"user-agent":"FIELD-RD-Research/1.0","accept":"text/html,application/json,text/plain;q=0.9,*/*;q=0.5"}});
     if(r.status>=300&&r.status<400){
       const loc=r.headers.get("location");
       if(!loc)throw new Error("redirect_without_location");
@@ -72,7 +72,7 @@ function provider(raw){
 
 async function youtubeMeta(url){
   const endpoint="https://www.youtube.com/oembed?url="+encodeURIComponent(url)+"&format=json";
-  const r=await fetch(endpoint,{headers:{"user-agent":"FIELD-RD-Research/1.0"}});
+  const r=await fetch(endpoint,{signal:AbortSignal.timeout(8000),headers:{"user-agent":"FIELD-RD-Research/1.0"}});
   if(!r.ok)return null;
   const j=await r.json();
   return {title:j.title||"",author:j.author_name||"",description:"YouTube metadata imported. Transcript/formula must still be verified from the video.",text:""};
