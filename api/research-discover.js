@@ -42,12 +42,40 @@ function queries(menu,focus=""){
     {channel:"PRODUCT_PAGE",q:m+" official preparation guide ingredients"+extra}
   ];
 }
-async function searchOne(x){
+export function parseBingResults(xml="",channel="WEB",limit=4){
+  const out=[],seen=new Set();
+  const re=/<item>([\s\S]*?)<\/item>/gi;
+  let m;
+  while((m=re.exec(xml))&&out.length<limit){
+    const body=m[1];
+    const title=stripTags((body.match(/<title>([\s\S]*?)<\/title>/i)||[])[1]||"");
+    const link=decodeEntity((body.match(/<link>([\s\S]*?)<\/link>/i)||[])[1]||"").trim();
+    let url="";
+    try{const u=new URL(link);if(u.protocol==="https:"&&!u.hostname.toLowerCase().includes("bing.com"))url=u.toString()}catch{}
+    if(!url||seen.has(url))continue;
+    seen.add(url);
+    out.push({channel,url,title:title||url});
+  }
+  return out;
+}
+async function searchBing(x){
+  const u="https://www.bing.com/search?q="+encodeURIComponent(x.q)+"&format=rss&count=5&setlang=en-US";
+  const r=await fetch(u,{signal:AbortSignal.timeout(7000),headers:{"user-agent":"Mozilla/5.0 FIELD-RD-ResearchScout/1.0","accept":"application/rss+xml,application/xml,text/xml;q=0.9,*/*;q=0.5"}});
+  if(!r.ok)throw new Error("bing_status");
+  return parseBingResults(await r.text(),x.channel,3);
+}
+async function searchDuck(x){
   const u="https://html.duckduckgo.com/html/?q="+encodeURIComponent(x.q);
   const r=await fetch(u,{signal:AbortSignal.timeout(7000),headers:{"user-agent":"Mozilla/5.0 FIELD-RD-ResearchScout/1.0","accept":"text/html"}});
-  if(!r.ok)throw new Error("search_status");
-  const html=await r.text();
-  return parseDuckResults(html,x.channel,3);
+  if(!r.ok)throw new Error("duck_status");
+  return parseDuckResults(await r.text(),x.channel,3);
+}
+async function searchOne(x){
+  try{
+    const bing=await searchBing(x);
+    if(bing.length)return bing;
+  }catch{}
+  return searchDuck(x);
 }
 export default async function handler(req,res){
   res.setHeader("Cache-Control","no-store");
