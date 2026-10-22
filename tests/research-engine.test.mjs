@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {detectProvider,sourceEvidenceScore,evaluateTrial,rankTrials,nextExperimentHint,parseSourceRefs,linkedEvidence,evaluateTrialWithEvidence,bestByMenuWithEvidence,trialValidationErrors,formulaItems,researchQueriesForTrial,buildCandidateRecommendation} from "../src/rd-core.js";
 import {isPrivateAddress,stripHtml} from "../api/research.js";
-import {decodeSearchUrl,parseDuckResults,parseBingResults} from "../api/research-discover.js";
+import {decodeSearchUrl,parseDuckResults,parseBingResults,researchCoreTokens,isRelevantResearchResult} from "../api/research-discover.js";
 
 test("detects supported research channels",()=>{
   assert.equal(detectProvider("https://youtu.be/abc"),"YOUTUBE");
@@ -150,4 +150,17 @@ test("research scout parses Bing RSS direct HTTPS results",()=>{
  assert.equal(rows[0].url,"https://example.com/matcha");
  assert.equal(rows[0].title,"Matcha Guide");
  assert.equal(rows[0].channel,"PRODUCT_PAGE");
+});
+
+
+test("research relevance uses the specific menu token, not generic Pure",()=>{
+ assert.deepEqual(researchCoreTokens("Pure Matcha"),["matcha"]);
+ assert.equal(isRelevantResearchResult({channel:"WEB",url:"https://pure.app/",title:"Open-Minded Dating App: PURE.APP"},"Pure Matcha"),false);
+ assert.equal(isRelevantResearchResult({channel:"WEB",url:"https://example.com/matcha-guide",title:"Matcha preparation guide"},"Pure Matcha"),true);
+});
+
+test("research relevance enforces channel domain for specialist lanes",()=>{
+ assert.equal(isRelevantResearchResult({channel:"YOUTUBE",url:"https://example.com/matcha",title:"Matcha recipe"},"Matcha"),false);
+ assert.equal(isRelevantResearchResult({channel:"YOUTUBE",url:"https://www.youtube.com/watch?v=x",title:"Matcha recipe"},"Matcha"),true);
+ assert.equal(isRelevantResearchResult({channel:"PEER_REVIEWED",url:"https://pubmed.ncbi.nlm.nih.gov/123/",title:"Matcha sensory study"},"Matcha"),true);
 });
