@@ -9,7 +9,7 @@ Separate beverage R&D application for FIELD Café.
 - Production LOCK requires T0/T5/T10, exact ingredient/SKU snapshot, repeatability, dilution, cup/ice, costing, SOP and QC readiness.
 - Ingredient Master surfaces known identity and missing evidence instead of guessing.
 - Browser storage migrates v1/v2 records to v3, preserving FIELD sensory evidence and correcting unperformed ML-02 to `PLANNED`.
-- Backups export trials plus Ingredient Master.
+- Backups export trials plus Ingredient Master. Restore validates the payload and keeps a device-local pre-import recovery snapshot before replacement.
 - CI runs tests and production build.
 
 ## Storage
