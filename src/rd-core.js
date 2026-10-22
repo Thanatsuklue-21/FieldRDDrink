@@ -120,3 +120,17 @@ export function bestByMenuWithEvidence(trials,sources=[]){
     return{menu,ranked,best:ranked[0]||null};
   });
 }
+
+export function trialValidationErrors(trial,requiredLockGates=["repeatability","dilution","cupIce","costing","sop","qc"]){
+  const errors=[];
+  if(!String(trial?.menu||"").trim())errors.push("กรอกชื่อเมนู");
+  if(!String(trial?.changed||"").trim())errors.push("กรอกตัวแปรที่เปลี่ยน");
+  if(!String(trial?.formula||"").trim())errors.push("กรอกสูตรและปริมาณ");
+  if(trial?.status==="LOCKED"){
+    if(!String(trial?.t0||"").trim()||!String(trial?.t5||"").trim()||!String(trial?.t10||"").trim())errors.push("Production LOCK ต้องมีผลชิม T0, T5 และ T10");
+    if(!String(trial?.ingredients||"").trim())errors.push("Production LOCK ต้องมี Ingredient / SKU snapshot");
+    const missing=requiredLockGates.filter(k=>!trial?.[k]);
+    if(missing.length)errors.push("Production LOCK ต้องผ่าน "+missing.join(", "));
+  }
+  return errors;
+}
