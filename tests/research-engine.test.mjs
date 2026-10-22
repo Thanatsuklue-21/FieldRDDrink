@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {detectProvider,sourceEvidenceScore,evaluateTrial,rankTrials,nextExperimentHint,parseSourceRefs,linkedEvidence,evaluateTrialWithEvidence,bestByMenuWithEvidence,trialValidationErrors,formulaItems,researchQueriesForTrial,buildCandidateRecommendation} from "../src/rd-core.js";
 import {isPrivateAddress,stripHtml} from "../api/research.js";
-import {decodeSearchUrl,parseDuckResults} from "../api/research-discover.js";
+import {decodeSearchUrl,parseDuckResults,parseBingResults} from "../api/research-discover.js";
 
 test("detects supported research channels",()=>{
   assert.equal(detectProvider("https://youtu.be/abc"),"YOUTUBE");
@@ -140,4 +140,14 @@ test("research scout parses and deduplicates search result links",()=>{
  assert.equal(rows.length,2);
  assert.equal(rows[0].channel,"WEB");
  assert.equal(rows[0].title,"Matcha A");
+});
+
+
+test("research scout parses Bing RSS direct HTTPS results",()=>{
+ const xml='<?xml version="1.0"?><rss><channel><item><title>Matcha Guide</title><link>https://example.com/matcha</link><description>5 g</description></item><item><title>Bing Self</title><link>https://www.bing.com/search?q=x</link></item></channel></rss>';
+ const rows=parseBingResults(xml,"PRODUCT_PAGE",5);
+ assert.equal(rows.length,1);
+ assert.equal(rows[0].url,"https://example.com/matcha");
+ assert.equal(rows[0].title,"Matcha Guide");
+ assert.equal(rows[0].channel,"PRODUCT_PAGE");
 });
