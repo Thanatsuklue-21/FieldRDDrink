@@ -8,3 +8,7 @@ test("valid trial collection supports evidence states",()=>assert.equal(valid([{
 test("reject corrupt collection",()=>assert.equal(valid([{id:"T1",menu:"Latte",status:"BAD"}]),false));
 test("Production LOCK requires sensory identity and readiness gates",()=>{const ok={t0:"ok",t5:"ok",t10:"ok",ingredients:"SKU-1",repeatability:true,dilution:true,cupIce:true,costing:true,sop:true,qc:true};assert.equal(canLock(ok),true);assert.equal(canLock({...ok,t10:""}),false);assert.equal(canLock({...ok,ingredients:""}),false);assert.equal(canLock({...ok,cupIce:false}),false)});
 test("migration never marks unperformed ML-02 as RUNNING",()=>{const [pm,ml1,ml2]=migrate([{id:"PM-02",menu:"Pure",status:"LOCKED"},{id:"ML-01",menu:"Latte",status:"PLANNED"},{id:"ML-02",menu:"Latte",status:"RUNNING",t0:"",t5:"",t10:""}]);assert.equal(pm.status,"SENSORY_LOCKED");assert.equal(ml1.status,"NEEDS_ADJUSTMENT");assert.equal(ml2.status,"PLANNED");assert.equal(ml1.t0,"กินง่าย หวานกำลังดี")});
+
+function extractBackup(parsed){const candidate=Array.isArray(parsed)?parsed:parsed?.trials;const a=migrate(candidate);if(!valid(a))throw new Error("invalid");return a}
+test("backup import accepts wrapped v3 and legacy arrays",()=>{assert.equal(extractBackup({version:3,trials:[{id:"T1",menu:"Pure",status:"PLANNED"}]}).length,1);assert.equal(extractBackup([{id:"T2",menu:"Latte",status:"PASS"}]).length,1)});
+test("backup import rejects malformed payload",()=>assert.throws(()=>extractBackup({version:3,trials:{bad:true}})));
