@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {detectProvider,sourceEvidenceScore,evaluateTrial,rankTrials,nextExperimentHint,parseSourceRefs,linkedEvidence,evaluateTrialWithEvidence,bestByMenuWithEvidence,trialValidationErrors} from "../src/rd-core.js";
+import {detectProvider,sourceEvidenceScore,evaluateTrial,rankTrials,nextExperimentHint,parseSourceRefs,linkedEvidence,evaluateTrialWithEvidence,bestByMenuWithEvidence,trialValidationErrors,formulaItems,researchQueriesForTrial,buildCandidateRecommendation} from "../src/rd-core.js";
 import {isPrivateAddress,stripHtml} from "../api/research.js";
 
 test("detects supported research channels",()=>{
@@ -77,4 +77,51 @@ test("trial validation returns visible errors for empty form",()=>{
 test("Production LOCK validation names missing gates and evidence",()=>{
  const errors=trialValidationErrors({menu:"QA",changed:"QA",formula:"Water 100 g",status:"LOCKED"},["repeatability","dilution"]);
  assert.ok(errors.some(x=>x.includes("T0")));assert.ok(errors.some(x=>x.includes("Ingredient")));assert.ok(errors.some(x=>x.includes("repeatability")));
+});
+
+
+test("formula parser extracts gram and ml variables",()=>{
+ const items=formulaItems("Yamito 5 g · Water 40 g · Milk 110 ml");
+ assert.deepEqual(items.map(x=>[x.name,x.amount,x.unit]),[["Yamito",5,"g"],["Water",40,"g"],["Milk",110,"ml"]]);
+});
+
+test("candidate engine reduces sweetener first when FIELD says sweet-forward",()=>{
+ const base={id:"ML-01",menu:"Matcha Latte",status:"NEEDS_ADJUSTMENT",formula:"Yamito 5 g · Crystal 40 g @70°C · Mitr Phol Original Cane Syrup 15 g · CP-Meiji 110 g",t0:"กินง่าย",t5:"ยังอร่อย",t10:"มัทฉะบาง แต่หวานนำ",ingredients:"SKU"};
+ const r=buildCandidateRecommendation(base,[base],[]);
+ assert.equal(r.state,"READY");
+ assert.equal(r.rule,"REDUCE_SWEETENER");
+ assert.match(r.changed,/15 → 10 g/);
+ assert.match(r.formula,/Syrup 10 g/);
+ assert.match(r.why,/ความหวานนำ/);
+ assert.equal(r.candidate.status,"PLANNED");
+ assert.equal(r.candidate.t0,"");
+});
+
+test("candidate engine refuses to mutate sensory or production locked formula",()=>{
+ const sensory=buildCandidateRecommendation({id:"PM-02",menu:"Pure Matcha",status:"SENSORY_LOCKED",formula:"Matcha 5 g · Water 160 g"},[],[]);
+ const prod=buildCandidateRecommendation({id:"X",menu:"X",status:"LOCKED",formula:"Tea 20 g · Water 200 g"},[],[]);
+ assert.equal(sensory.canCreate,false);assert.equal(sensory.state,"LOCKED");
+ assert.equal(prod.canCreate,false);assert.equal(prod.state,"LOCKED");
+});
+
+test("candidate engine detects an equivalent planned trial instead of duplicating it",()=>{
+ const base={id:"ML-01",menu:"Matcha Latte",status:"NEEDS_ADJUSTMENT",formula:"Yamito 5 g · Syrup 15 g · Milk 110 g",t10:"หวานนำ"};
+ const planned={id:"ML-02",menu:"Matcha Latte",status:"PLANNED",formula:"Yamito 5 g · Syrup 10 g · Milk 110 g"};
+ const r=buildCandidateRecommendation(base,[base,planned],[]);
+ assert.equal(r.state,"DUPLICATE");assert.equal(r.canCreate,false);assert.equal(r.duplicateTrialId,"ML-02");
+});
+
+test("external evidence can raise candidate confidence but cannot choose a worse sensory winner",()=>{
+ const base={id:"A",menu:"Latte",status:"NEEDS_ADJUSTMENT",formula:"Matcha 5 g · Syrup 15 g · Milk 110 g",t0:"ok",t5:"ok",t10:"หวานนำ",scoreTaste:4,scoreBody:4,scoreIdentity:4,scoreDilution:4,scoreOverall:4,sourceRefs:"SRC-1"};
+ const source={id:"SRC-1",menu:"Latte",type:"PEER_REVIEWED",relevance:5,verified:true,formula:"sweetness"};
+ const r=buildCandidateRecommendation(base,[base],[source]);
+ assert.ok(r.confidence>=evaluateTrialWithEvidence(base,[source]).confidence);
+ assert.equal(r.candidate.status,"PLANNED");
+});
+
+test("research planner builds channel-specific queries from the actual defect",()=>{
+ const q=researchQueriesForTrial({menu:"Matcha Latte",t10:"หวานนำ"});
+ assert.equal(q.length,5);
+ assert.ok(q.every(x=>x.query.includes("Matcha Latte")));
+ assert.ok(q.some(x=>x.query.includes("sweetness balance")));
 });
