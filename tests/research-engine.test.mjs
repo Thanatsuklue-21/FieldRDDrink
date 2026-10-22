@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {detectProvider,sourceEvidenceScore,evaluateTrial,rankTrials,nextExperimentHint,parseSourceRefs,linkedEvidence,evaluateTrialWithEvidence,bestByMenuWithEvidence,trialValidationErrors,formulaItems,researchQueriesForTrial,buildCandidateRecommendation} from "../src/rd-core.js";
 import {isPrivateAddress,stripHtml} from "../api/research.js";
+import {decodeSearchUrl,parseDuckResults} from "../api/research-discover.js";
 
 test("detects supported research channels",()=>{
   assert.equal(detectProvider("https://youtu.be/abc"),"YOUTUBE");
@@ -124,4 +125,19 @@ test("research planner builds channel-specific queries from the actual defect",(
  assert.equal(q.length,5);
  assert.ok(q.every(x=>x.query.includes("Matcha Latte")));
  assert.ok(q.some(x=>x.query.includes("sweetness balance")));
+});
+
+
+test("research scout decodes DuckDuckGo redirect targets safely",()=>{
+ const u=decodeSearchUrl("https://duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Fmatcha%3Fa%3D1");
+ assert.equal(u,"https://example.com/matcha?a=1");
+ assert.equal(decodeSearchUrl("http://example.com/x"),"");
+});
+
+test("research scout parses and deduplicates search result links",()=>{
+ const html='<a class="result__a" href="https://duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Fa">Matcha A</a><a class="result__a" href="https://duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Fa">Duplicate</a><a class="result__a" href="https://duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.org%2Fb">Matcha B</a>';
+ const rows=parseDuckResults(html,"WEB",5);
+ assert.equal(rows.length,2);
+ assert.equal(rows[0].channel,"WEB");
+ assert.equal(rows[0].title,"Matcha A");
 });
