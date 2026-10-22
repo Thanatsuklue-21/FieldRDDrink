@@ -70,3 +70,35 @@ Confidence is separate from sensory score and rises with:
 ## Non-negotiable rule
 
 External evidence may suggest *what to test*. Only FIELD trial data may determine *which formula wins*.
+
+
+## Automatic Research Scout
+
+`/api/research-discover` creates channel-specific searches for the current menu and performs best-effort public-web discovery. The UI then calls the existing safe `/api/research` reader for discovered URLs and shows readable previews plus obvious units such as g, mL, °C, seconds and minutes.
+
+Safety rules:
+- discovered sources are **unverified by default**;
+- the scout never writes a source into verified Evidence automatically;
+- a source that cannot be read remains visible as a URL rather than receiving fabricated content;
+- search failure falls back to manual quick-search/URL ingestion;
+- external discovery cannot PASS, SENSORY_LOCK or Production LOCK a formula.
+
+## AI R&D Advisor
+
+The Advisor operates only on trials with actual result states such as `NEEDS_ADJUSTMENT`, `PASS`, `FAIL` or `HOLD`.
+
+It:
+1. reads FIELD sensory timeline/notes and structured scores;
+2. identifies a directional defect only when evidence is specific enough;
+3. parses measurable formula variables in g/mL;
+4. changes exactly one variable in a small step;
+5. explains the sensory reason for that change;
+6. carries source refs into the candidate;
+7. creates only a `PLANNED` candidate for human review;
+8. detects an equivalent existing PLANNED/RUNNING trial and refuses to duplicate it.
+
+Examples of guarded rules include reducing a measurable sweetener when the actual result explicitly says sweetness leads, increasing the primary flavour ingredient when character is explicitly weak, and reducing measurable water when dilution is the identified defect.
+
+If the sensory evidence does not point to a safe direction, the engine returns `NEEDS_HUMAN_DIRECTION` instead of guessing.
+
+`SENSORY_LOCKED` and `LOCKED` formulas are immutable to automatic formula changes.
