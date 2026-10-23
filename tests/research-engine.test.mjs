@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {detectProvider,sourceEvidenceScore,evaluateTrial,rankTrials,nextExperimentHint,parseSourceRefs,linkedEvidence,evaluateTrialWithEvidence,bestByMenuWithEvidence,trialValidationErrors,formulaItems,researchQueriesForTrial,buildCandidateRecommendation} from "../src/rd-core.js";
+import {detectProvider,sourceEvidenceScore,evaluateTrial,rankTrials,nextExperimentHint,parseSourceRefs,linkedEvidence,evaluateTrialWithEvidence,bestByMenuWithEvidence,trialValidationErrors,formulaItems,researchQueriesForTrial,buildCandidateRecommendation,replaceLocalDataAtomically} from "../src/rd-core.js";
 import {isPrivateAddress,stripHtml} from "../api/research.js";
 import {decodeSearchUrl,parseDuckResults,parseBingResults,researchCoreTokens,isRelevantResearchResult} from "../api/research-discover.js";
 
@@ -163,4 +163,46 @@ test("research relevance enforces channel domain for specialist lanes",()=>{
  assert.equal(isRelevantResearchResult({channel:"YOUTUBE",url:"https://example.com/matcha",title:"Matcha recipe"},"Matcha"),false);
  assert.equal(isRelevantResearchResult({channel:"YOUTUBE",url:"https://www.youtube.com/watch?v=x",title:"Matcha recipe"},"Matcha"),true);
  assert.equal(isRelevantResearchResult({channel:"PEER_REVIEWED",url:"https://pubmed.ncbi.nlm.nih.gov/123/",title:"Matcha sensory study"},"Matcha"),true);
+});
+
+
+test("blank sensory inputs remain missing, never become zero scores",()=>{
+ const e=evaluateTrial({status:"PASS",t0:"ชิมแล้ว",scoreTaste:"",scoreBody:" ",scoreIdentity:null,scoreDilution:undefined,scoreOverall:""});
+ assert.equal(e.structured,0);
+ assert.equal(e.sensoryScore,null);
+ assert.equal(e.decision,"NEEDS_STRUCTURED_SCORE");
+});
+
+test("unverified research cannot boost AI candidate confidence or refs",()=>{
+ const base={id:"A",menu:"Latte",status:"NEEDS_ADJUSTMENT",formula:"Matcha 5 g · Syrup 15 g · Milk 110 g",t10:"หวานนำ"};
+ const unverified={id:"SRC-U",menu:"Latte",type:"PEER_REVIEWED",relevance:5,verified:false,formula:"Syrup 10 g"};
+ const plain=buildCandidateRecommendation(base,[base],[]);
+ const withDraft=buildCandidateRecommendation(base,[base],[unverified]);
+ assert.equal(withDraft.confidence,plain.confidence);
+ assert.deepEqual(withDraft.evidenceRefs,plain.evidenceRefs);
+});
+
+test("atomic local restore rolls back both datasets when the second write fails",()=>{
+ const map=new Map([["trials",JSON.stringify([{id:"OLD"}])],["research",JSON.stringify([{id:"SRC-OLD"}])]]);
+ let failed=false;
+ const storage={
+   getItem:k=>map.has(k)?map.get(k):null,
+   setItem:(k,v)=>{if(k==="research"&&!failed){failed=true;throw new Error("quota")};map.set(k,v)},
+   removeItem:k=>map.delete(k)
+ };
+ assert.throws(()=>replaceLocalDataAtomically(
+   storage,"trials","research",
+   [{id:"NEW"}],[{id:"SRC-NEW"}],
+   a=>Array.isArray(a),a=>Array.isArray(a)
+ ));
+ assert.equal(map.get("trials"),JSON.stringify([{id:"OLD"}]));
+ assert.equal(map.get("research"),JSON.stringify([{id:"SRC-OLD"}]));
+});
+
+test("atomic local restore verifies both datasets before commit is accepted",()=>{
+ const map=new Map([["trials","[]"],["research","[]"]]);
+ const storage={getItem:k=>map.has(k)?map.get(k):null,setItem:(k,v)=>map.set(k,v),removeItem:k=>map.delete(k)};
+ const out=replaceLocalDataAtomically(storage,"trials","research",[{id:"A"}],[{id:"S"}],a=>a[0]?.id==="A",a=>a[0]?.id==="S");
+ assert.equal(out.trials[0].id,"A");
+ assert.equal(out.sources[0].id,"S");
 });
