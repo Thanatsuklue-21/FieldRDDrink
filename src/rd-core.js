@@ -33,7 +33,7 @@ export function sourceEvidenceScore(source){
   const exact=source?.formula?.trim()?1:.95;
   return Math.round(Math.min(1,base*relevance*verified*exact)*100);
 }
-function n(v){const x=Number(v);return Number.isFinite(x)&&x>=0&&x<=5?x:null}
+function n(v){if(v===null||v===undefined||String(v).trim()==="")return null;const x=Number(v);return Number.isFinite(x)&&x>=0&&x<=5?x:null}
 const qualitative={LOCKED:6,SENSORY_LOCKED:5,PASS:4,NEEDS_ADJUSTMENT:3,HOLD:2,FAIL:0,PLANNED:-1,RUNNING:-1};
 export function evaluateTrial(trial){
   let weighted=0,totalWeight=0,structured=0;
@@ -145,7 +145,7 @@ export function formulaItems(formula=""){
     return{segment,name:m[1].trim(),amount:Number(m[2]),amountText:m[2],unit:m[3]};
   }).filter(Boolean);
 }
-function fieldScore(trial,key){const x=Number(trial?.[key]);return Number.isFinite(x)&&x>=0&&x<=5?x:null}
+function fieldScore(trial,key){return n(trial?.[key])}
 function feedbackText(trial){return [trial?.t0,trial?.t5,trial?.t10,trial?.t15,trial?.notes].map(lowerText).filter(Boolean).join(" · ")}
 function hasAny(text,terms){return terms.some(x=>text.includes(x))}
 function pickItem(items,re){return items.find(x=>re.test(x.name))}
@@ -158,10 +158,7 @@ function replaceItemAmount(formula,item,next){
   return String(formula).replace(item.segment,item.segment.replace(item.amountText,nextText));
 }
 function strongestSources(menu,sources=[]){
-  return sources.filter(s=>s.menu===menu).map(s=>({...s,_score:sourceEvidenceScore(s)})).sort((a,b)=>{
-    if(Boolean(a.verified)!==Boolean(b.verified))return a.verified?-1:1;
-    return b._score-a._score;
-  }).slice(0,3);
+  return sources.filter(s=>s.menu===menu&&s.verified===true).map(s=>({...s,_score:sourceEvidenceScore(s)})).sort((a,b)=>b._score-a._score).slice(0,3);
 }
 export function researchQueriesForTrial(trial){
   if(!trial?.menu)return[];
@@ -245,4 +242,27 @@ export function buildCandidateRecommendation(trial,trials=[],sources=[]){
       repeatability:false,dilution:false,cupIce:false,costing:false,sop:false,pos:false,qc:false
     }
   };
+}
+
+
+export function replaceLocalDataAtomically(storage,trialKey,researchKey,nextTrials,nextSources,validateTrials,validateSources){
+  const previousTrials=storage.getItem(trialKey);
+  const previousResearch=storage.getItem(researchKey);
+  const restore=(key,value)=>value===null?storage.removeItem(key):storage.setItem(key,value);
+  try{
+    storage.setItem(trialKey,JSON.stringify(nextTrials));
+    storage.setItem(researchKey,JSON.stringify(nextSources));
+    const trials=JSON.parse(storage.getItem(trialKey)||"null");
+    const sources=JSON.parse(storage.getItem(researchKey)||"null");
+    if(!validateTrials(trials)||!validateSources(sources))throw new Error("restore_verify_failed");
+    return{trials,sources};
+  }catch(error){
+    try{
+      restore(trialKey,previousTrials);
+      restore(researchKey,previousResearch);
+    }catch{
+      throw new Error("restore_rollback_failed");
+    }
+    throw error;
+  }
 }
