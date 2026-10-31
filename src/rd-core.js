@@ -266,3 +266,32 @@ export function replaceLocalDataAtomically(storage,trialKey,researchKey,nextTria
     throw error;
   }
 }
+
+/**
+ * Safely combine locally stored and imported R&D evidence.
+ * Record IDs are immutable: same ID with different content is a conflict, NEVER last-write-wins.
+ * Caller must validate both collections, create recovery snapshots, and atomically persist the result.
+ */
+function canonicalImportValue(value){
+  if(Array.isArray(value))return value.map(canonicalImportValue);
+  if(value&&typeof value==="object")return Object.fromEntries(Object.keys(value).sort().map(k=>[k,canonicalImportValue(value[k])]));
+  return value;
+}
+export function mergeImmutableRecords(localRecords,incomingRecords,kind="Record"){
+  if(!Array.isArray(localRecords)||!Array.isArray(incomingRecords))throw new Error("import_invalid_collection");
+  const known=new Map();
+  for(const record of localRecords){
+    if(!record||typeof record.id!=="string"||!record.id.trim()||known.has(record.id))throw new Error("local_invalid_id");
+    known.set(record.id,record);
+  }
+  const seen=new Set(),added=[];
+  for(const record of incomingRecords){
+    if(!record||typeof record.id!=="string"||!record.id.trim()||seen.has(record.id))throw new Error("import_invalid_or_duplicate_id");
+    seen.add(record.id);
+    if(!known.has(record.id)){added.push(record);continue}
+    if(JSON.stringify(canonicalImportValue(known.get(record.id)))!==JSON.stringify(canonicalImportValue(record))){
+      throw new Error(`import_conflict:${kind}:${record.id}`);
+    }
+  }
+  return{records:[...localRecords,...added],added:added.length,unchanged:incomingRecords.length-added.length};
+}
