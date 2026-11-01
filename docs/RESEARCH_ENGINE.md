@@ -102,3 +102,7 @@ Examples of guarded rules include reducing a measurable sweetener when the actua
 If the sensory evidence does not point to a safe direction, the engine returns `NEEDS_HUMAN_DIRECTION` instead of guessing.
 
 `SENSORY_LOCKED` and `LOCKED` formulas are immutable to automatic formula changes.
+
+## Research Coach v1
+
+The dashboard uses an audited coach layer over the candidate engine. It shows observation coverage, missing controls, linked and deduplicated evidence, exact one-variable validation and a baseline comparison plan. Negated/ambiguous feedback and incomplete formula parsing block automatic candidate preparation. High scores alone no longer justify adjustment. Saved candidate Trials preserve a versioned researchPlan snapshot; methods are clearly separated from FIELD tasting evidence. See [evaluation, inspected sources and limits](RESEARCH_COACH_EVALUATION.md). This is an inspectable rules-based workflow, not a newly trained model or a demonstrated advantage over Claude.

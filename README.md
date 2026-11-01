@@ -39,3 +39,7 @@ npm run build
 - Formula Evaluator ranks only actually tested trials; PLANNED/RUNNING candidates are excluded. It reports sensory score, confidence and the next validation need.
 - AI R&D Advisor converts actual sensory defects into a **single-variable PLANNED candidate**, explains why that variable is being changed, links available evidence, and blocks duplicate candidates. `SENSORY_LOCKED` and `LOCKED` formulas are never mutated automatically.
 - Historical trials without structured scores remain valid evidence and are labelled as needing structured scoring instead of receiving fabricated numbers.
+
+## Research Coach
+
+The dashboard audits the Trial's linked evidence, shows missing measurements/process controls, verifies an exact one-variable recipe delta, and prepares a baseline comparison plan. Negated/ambiguous feedback asks for clarification; untested and locked trials cannot generate altered recipes. Prepared candidates remain PLANNED and retain a versioned plan/citation snapshot when explicitly saved. See [inspected research sources, evaluation and limitations](docs/RESEARCH_COACH_EVALUATION.md). This is an inspectable rules-based tool, not a trained foundation model or demonstrated superiority over Claude.

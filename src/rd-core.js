@@ -19,10 +19,11 @@ export const SCORE_FIELDS=[
 export function detectProvider(raw=""){
   try{
     const h=new URL(raw).hostname.toLowerCase();
-    if(h.includes("youtube.com")||h==="youtu.be")return"YOUTUBE";
-    if(h.includes("lemon8"))return"LEMON8";
-    if(h.includes("gemini.google")||h==="share.google")return"GEMINI";
-    if(h.includes("pubmed")||h.includes("doi.org")||h.includes("sciencedirect")||h.includes("ncbi.nlm.nih.gov"))return"PEER_REVIEWED";
+    const host=domain=>h===domain||h.endsWith('.'+domain);
+    if(host('youtube.com')||host('youtu.be'))return"YOUTUBE";
+    if(host('lemon8-app.com')||host('lemon8.com'))return"LEMON8";
+    if(host('gemini.google.com')||h==="share.google")return"GEMINI";
+    if(host('doi.org')||host('sciencedirect.com')||host('ncbi.nlm.nih.gov'))return"PEER_REVIEWED";
   }catch{}
   return"OTHER";
 }
@@ -33,7 +34,7 @@ export function sourceEvidenceScore(source){
   const exact=source?.formula?.trim()?1:.95;
   return Math.round(Math.min(1,base*relevance*verified*exact)*100);
 }
-function n(v){if(v===null||v===undefined||String(v).trim()==="")return null;const x=Number(v);return Number.isFinite(x)&&x>=0&&x<=5?x:null}
+function n(v){if(!['string','number'].includes(typeof v)||String(v).trim()==="")return null;const x=Number(v);return Number.isFinite(x)&&x>=0&&x<=5?x:null}
 const qualitative={LOCKED:6,SENSORY_LOCKED:5,PASS:4,NEEDS_ADJUSTMENT:3,HOLD:2,FAIL:0,PLANNED:-1,RUNNING:-1};
 export function evaluateTrial(trial){
   let weighted=0,totalWeight=0,structured=0;
@@ -102,7 +103,7 @@ export function recommendationReason(trial,sources=[]){
   const e=evaluateTrialWithEvidence(trial,sources);
   const parts=[];
   if(e.sensoryScore!==null)parts.push(`FIELD sensory ${e.sensoryScore}/100`);else parts.push("ยังไม่มี Structured Sensory Score");
-  parts.push(`confidence ${e.confidence}%`);
+  parts.push(`คะแนนข้อมูลตามกติกา ${e.confidence}/100 (ไม่ใช่โอกาสที่สูตรจะชนะ)`);
   if(e.evidence.verifiedCount)parts.push(`verified sources ${e.evidence.verifiedCount}`);
   if(e.evidence.missingCount)parts.push(`missing refs ${e.evidence.missingCount}`);
   return parts.join(" · ");
@@ -147,6 +148,11 @@ export function formulaItems(formula=""){
 }
 function fieldScore(trial,key){return n(trial?.[key])}
 function feedbackText(trial){return [trial?.t0,trial?.t5,trial?.t10,trial?.t15,trial?.notes].map(lowerText).filter(Boolean).join(" · ")}
+// A negated defect is not evidence for a recipe change. Complex/conflicting
+// feedback is handled by the Research Coach rather than guessed here.
+function actionableFeedback(trial){return feedbackText(trial)
+  .replace(/(?:ไม่|ไม่ได้)\s*(?:หวานนำ|หวานไป|หวานเกิน|มัทฉะบาง|ชาอ่อน|กาแฟอ่อน|โกโก้อ่อน|รสหลักบาง|จาง|น้ำเยอะ)/g,'')
+  .replace(/\b(?:not|never)\s+(?:too sweet|sweet-forward|weak character|flavor faint|watery|dilut\w*)\b/g,'');}
 function hasAny(text,terms){return terms.some(x=>text.includes(x))}
 function pickItem(items,re){return items.find(x=>re.test(x.name))}
 function roundedStep(value,delta,step){
@@ -162,7 +168,7 @@ function strongestSources(menu,sources=[]){
 }
 export function researchQueriesForTrial(trial){
   if(!trial?.menu)return[];
-  const text=feedbackText(trial);
+  const text=actionableFeedback(trial);
   const focus=hasAny(text,["หวานนำ","หวานไป","too sweet","sweet-forward"])?"sweetness balance":
     hasAny(text,["มัทฉะบาง","ชาอ่อน","กาแฟอ่อน","โกโก้อ่อน","รสหลักบาง","weak character"])?"flavor intensity":
     hasAny(text,["จาง","น้ำเยอะ","dilut","watery"])?"dilution":
@@ -181,7 +187,7 @@ export function buildCandidateRecommendation(trial,trials=[],sources=[]){
   if(["LOCKED","SENSORY_LOCKED"].includes(trial.status))return{state:"LOCKED",canCreate:false,reason:"สูตรถูกล็อกแล้ว ระบบจะไม่เปลี่ยนสูตรอัตโนมัติ; ให้ทำ validation ที่ค้างอยู่แทน",baseTrialId:trial.id};
   if(["PLANNED","RUNNING"].includes(trial.status))return{state:"NOT_TESTED",canCreate:false,reason:"ต้องมีผลทดลองจริงก่อนจึงจะสร้างสูตรถัดไป",baseTrialId:trial.id};
   const e=evaluateTrialWithEvidence(trial,sources);
-  const text=feedbackText(trial);
+  const text=actionableFeedback(trial);
   const items=formulaItems(trial.formula);
   if(!items.length)return{state:"UNPARSEABLE",canCreate:false,reason:"สูตรฐานไม่มีปริมาณ g/mL ที่ระบบอ่านเพื่อเปลี่ยนตัวแปรเดียวได้",baseTrialId:trial.id};
 
@@ -203,9 +209,9 @@ export function buildCandidateRecommendation(trial,trials=[],sources=[]){
   }else{
     const scored=SCORE_FIELDS.map(([k,l])=>({k,l,v:fieldScore(trial,k)})).filter(x=>x.v!==null).sort((a,b)=>a.v-b.v);
     const weakest=scored[0];
-    if(weakest?.k==="scoreIdentity"&&identity){rule="INCREASE_IDENTITY";item=identity;const step=item.amount<=10?1:5;next=roundedStep(item.amount,step,step);why="Structured Score ต่ำสุดคือ "+weakest.l+" "+weakest.v+"/5 จึงทดสอบเพิ่ม "+(item.name||"วัตถุดิบรสหลัก")+" เพียงตัวเดียว";}
-    else if(weakest?.k==="scoreDilution"&&water){rule="REDUCE_WATER";item=water;next=roundedStep(item.amount,-10,5);why="Structured Score ต่ำสุดคือ "+weakest.l+" "+weakest.v+"/5 จึงทดสอบลด "+(item.name||"น้ำ")+" เพียงตัวเดียว";}
-    else if(weakest?.k==="scoreBody"&&milk&&hasAny(text,["บาง","body","thin"])){rule="INCREASE_BODY";item=milk;next=roundedStep(item.amount,10,5);why="Body เป็นจุดอ่อนและมี feedback ว่าเนื้อบาง จึงเพิ่ม "+(item.name||"นม")+" เพียงตัวเดียว";}
+    if(weakest?.v<3&&weakest.k==="scoreIdentity"&&identity){rule="INCREASE_IDENTITY";item=identity;const step=item.amount<=10?1:5;next=roundedStep(item.amount,step,step);why="Structured Score ต่ำสุดคือ "+weakest.l+" "+weakest.v+"/5 จึงทดสอบเพิ่ม "+(item.name||"วัตถุดิบรสหลัก")+" เพียงตัวเดียว";}
+    else if(weakest?.v<3&&weakest.k==="scoreDilution"&&water){rule="REDUCE_WATER";item=water;next=roundedStep(item.amount,-10,5);why="Structured Score ต่ำสุดคือ "+weakest.l+" "+weakest.v+"/5 จึงทดสอบลด "+(item.name||"น้ำ")+" เพียงตัวเดียว";}
+    else if(weakest?.v<3&&weakest.k==="scoreBody"&&milk&&hasAny(text,["บาง","body","thin"])){rule="INCREASE_BODY";item=milk;next=roundedStep(item.amount,10,5);why="Body เป็นจุดอ่อนและมี feedback ว่าเนื้อบาง จึงเพิ่ม "+(item.name||"นม")+" เพียงตัวเดียว";}
   }
   if(!rule||!item||next===null||next===item.amount)return{state:"NEEDS_HUMAN_DIRECTION",canCreate:false,reason:"ข้อมูลผลชิมยังไม่ชี้ทิศทางการเปลี่ยนตัวแปรเดียวอย่างปลอดภัย ระบบจึงไม่เดาสูตร",baseTrialId:trial.id,researchQueries:researchQueriesForTrial(trial)};
 
