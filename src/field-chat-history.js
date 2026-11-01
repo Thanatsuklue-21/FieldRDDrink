@@ -28,10 +28,47 @@ export const FIELD_CHAT_HISTORY = [
     t0:'Owner: prior 100% formula too rich; milk dominated matcha.',
     notes:'NOT approved; do not invent missing fresh milk amount or declare finished formula. Source: FIELD Project ChatGPT R&D.'}
 ];
+
+// Conservative recipe fingerprint: ignore punctuation/spacing but require the
+// same menu and the same ingredient-to-gram pairs. Unknown prose stays unknown
+// rather than being guessed into an equivalence.
+function recipeFingerprint(row) {
+  const menu = String(row.menu||'').normalize('NFC').toLocaleLowerCase('th-TH')
+    .replace(/\b(?:16\s*oz|16\s*ออนซ์)\b/g,'').replace(/[^\p{L}\p{N}]+/gu,' ').trim();
+  const formula = String(row.formula||'').normalize('NFC').toLocaleLowerCase('th-TH')
+    .replace(/^\s*candidate only\s*:\s*/,'');
+  const pairs = [...formula.matchAll(/([^;\n·,]+?)\s*(\d+(?:\.\d+)?)\s*g\b/giu)]
+    .map(match => {
+      const ingredient = match[1].replace(/@\s*\d+(?:\.\d+)?\s*°?c/giu,'')
+        .replace(/[^\p{L}\p{N}]+/gu,' ').trim();
+      return ingredient ? `${ingredient}:${Number(match[2])}` : '';
+    }).filter(Boolean).sort();
+  return menu && pairs.length ? `${menu}|${pairs.join('|')}` : null;
+}
 export function previewFieldChatHistory(currentTrials, currentSources=[]) {
   const candidate={trials:FIELD_CHAT_HISTORY,sources:[]};
   validateCollections(candidate);
-  return planDeviceImport(candidate,{trials:currentTrials,sources:currentSources});
+  const plan=planDeviceImport(candidate,{trials:currentTrials,sources:currentSources});
+  const knownRecipes=new Set(currentTrials.map(recipeFingerprint).filter(Boolean));
+  const semanticDuplicates=[];
+  plan.incoming.trials=plan.incoming.trials.filter(row=>{
+    const fingerprint=recipeFingerprint(row);
+    if(fingerprint&&knownRecipes.has(fingerprint)){
+      semanticDuplicates.push({kind:'trials',id:row.id,menu:row.menu,semantic:true});
+      return false;
+    }
+    return true;
+  });
+  plan.trials.added=plan.incoming.trials.length;
+  plan.trials.unchanged+=semanticDuplicates.length;
+  plan.semanticDuplicates=semanticDuplicates;
+  const conflicts=new Set(plan.conflicts.map(row=>row.id));
+  plan.duplicateIds=[...new Set([
+    ...currentTrials.filter(row=>FIELD_CHAT_HISTORY.some(candidate=>candidate.id===row.id)).map(row=>row.id),
+    ...semanticDuplicates.map(row=>row.id)
+  ].filter(id=>!conflicts.has(id)))];
+  plan.canImport=plan.conflicts.length===0&&plan.trials.added+plan.sources.added>0;
+  return plan;
 }
 export function assertHistoricalImportSafe(plan) {
   if (plan.conflicts.length) throw new Error('rd_chat_history_conflict');
