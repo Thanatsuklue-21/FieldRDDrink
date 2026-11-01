@@ -21,3 +21,4 @@ button,input,select,textarea{touch-action:manipulation}.hint{font-size:12px;colo
 
 .cloud-panel{background:#eef4ef;border:1px solid #c4d9ca;border-radius:14px;padding:16px;margin-bottom:16px;overflow-wrap:anywhere}.cloud-panel h2{margin-top:0}.cloud-panel p{font-size:13px;line-height:1.6}.cloud-panel form{max-width:480px}.cloud-message{font-weight:700}.cloud-panel button{min-height:48px}
 @media(max-width:520px){.cloud-panel .actions{flex-direction:column;align-items:stretch}.cloud-panel .actions>*{flex:auto;justify-content:center}.cloud-panel .primary{margin-top:0}}
+.import-preview{margin-top:16px;padding:14px;background:#fff;border:1px solid #c4d9ca;border-radius:12px}.import-preview summary{cursor:pointer;min-height:44px;padding:10px 0;font-weight:700}.import-preview pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;background:#f5f2e8;padding:10px;border-radius:8px}.import-preview h4{margin-bottom:5px}

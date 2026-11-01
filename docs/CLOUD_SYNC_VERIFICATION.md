@@ -13,3 +13,12 @@ Base: `9655591de004944e053ce72e06cd1ca2892f5caa`.
 ## Not yet verified
 
 Authorized hosted Supabase migration, real Supabase Auth, hosting configuration/deployment, real owner-data import and physical PC/Android/tablet acceptance have **not** been performed. Local QA's synthetic login is not evidence of hosted authentication security. Ingredient Master, separate staff roles and approval events remain later issue #8 work. Do not close issue #8 or claim production cross-device synchronization complete on this evidence.
+
+## Import preflight follow-up — 2026-11-01
+
+- 57 automated tests pass after adding read-only migration planning: new/matching/conflicting records, reordered keys, stale previews after another device uploads, invalid/duplicate records, empty devices and conflicting Evidence verification.
+- The actual SQL migration also rejects a queued request whose `p_owner` belongs to account A while the token belongs to B, including null intended owners. No record from the rejected request is created.
+- Synthetic browser QA: device A's existing Trial showed one exact match and disabled the import confirmation. Device B's same ID with a different formula showed one conflict, the changed `formula` field, both values (6 g vs 5 g) and a disabled confirmation. A third isolated origin showed four new local records without sending them during preview; the explicit confirmation then uploaded them and cleared the pending queue. The latter included baseline rows already persisted by local-mode save, all in the synthetic QA database only.
+- The browser file chooser failed once while preparing the third fixture; the UI case was completed through the normal local Trial form instead. This was not a hosted migration test.
+
+![Synthetic QA only: conflicting Trial blocks import and displays both values](qa-import-conflict.jpg)

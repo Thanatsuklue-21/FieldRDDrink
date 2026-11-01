@@ -23,7 +23,8 @@ http.createServer(async(req,res)=>{
     if(req.headers.authorization!=='Bearer '+token){res.statusCode=401;res.end(JSON.stringify({message:'rd_auth_required'}));return;}
     const run=chain.then(async()=>{
       try{await db.query("select set_config('request.jwt.claim.sub',$1,false)",[uid]);
-        const result=await db.query('select public.rd_sync($1::jsonb) as data',[JSON.stringify(JSON.parse(body).p_records)]);
+        const params=JSON.parse(body);
+        const result=await db.query('select public.rd_sync($1::uuid,$2::jsonb) as data',[params.p_owner,JSON.stringify(params.p_records)]);
         res.end(JSON.stringify(result.rows[0].data));
       }catch(e){res.statusCode=400;res.end(JSON.stringify({message:e.message,code:e.code}));}
     });chain=run.catch(()=>{});return;

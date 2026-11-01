@@ -16,7 +16,8 @@ test('PostgreSQL migration: auth, RLS, immutable retries, atomic conflicts and L
       insert into auth.users values('${a}'),('${b}');`);
     await db.exec(migration);
     const as=async id=>{await db.exec('reset role');await db.query("select set_config('request.jwt.claim.sub',$1,false)",[id]);await db.exec('set role authenticated')};
-    const sync=async records=>(await db.query('select public.rd_sync($1::jsonb) as result',[JSON.stringify(records)])).rows[0].result;
+    let intended=a;
+    const sync=async records=>(await db.query('select public.rd_sync($1::uuid,$2::jsonb) as result',[intended,JSON.stringify(records)])).rows[0].result;
     await db.exec('set role anon');await assert.rejects(sync([]),/permission denied/);
     await as('');await assert.rejects(sync([]),/rd_auth_required/);
     await as(a);
@@ -33,8 +34,11 @@ test('PostgreSQL migration: auth, RLS, immutable retries, atomic conflicts and L
     await assert.rejects(db.exec('delete from public.rd_records'),/permission denied/);
     await assert.rejects(db.exec("insert into public.rd_records(owner_id,kind,record_id,payload) values('"+a+"','trial','forged','{}')"),/permission denied/);
     await as(b);assert.equal((await db.query('select * from public.rd_records')).rows.length,0);
+    await assert.rejects(sync([t('A-outbox-must-not-reach-B')]),/rd_account_changed/);
+    intended=b;
     assert.equal((await sync([])).records.length,0);
     await sync([t('T1')]);assert.equal((await sync([])).records.length,1,'same ID in a different account is isolated');
-    await as(a);assert.equal((await sync([])).records.length,2);
+    await as(a);intended=a;assert.equal((await sync([])).records.length,2);
+    intended=null;await assert.rejects(sync([]),/rd_account_changed/);
   }finally{await db.close()}
 });

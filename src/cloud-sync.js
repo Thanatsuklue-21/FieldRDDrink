@@ -69,6 +69,26 @@ export function parseRemote(result) {
   validateCollections(data);
   return data;
 }
+
+// A migration plan is read-only: no queue, timestamps, backups or storage writes.
+// Immutable identities must agree before an operator can approve an upload.
+export function planDeviceImport(device, cloud) {
+  validateCollections(device); validateCollections(cloud);
+  const plan={trials:{added:0,unchanged:0},sources:{added:0,unchanged:0},conflicts:[],incoming:{trials:[],sources:[]}};
+  for (const kind of ['trials','sources']) {
+    const known=new Map(cloud[kind].map(row=>[row.id,row]));
+    for (const row of device[kind]) {
+      const server=known.get(row.id);
+      if (!server) {plan[kind].added++;plan.incoming[kind].push(row);}
+      else if(same(row,server))plan[kind].unchanged++;
+      else plan.conflicts.push({kind,id:row.id,device:row,cloud:server,
+        fields:[...new Set([...Object.keys(row),...Object.keys(server)])].filter(k=>!same(row[k],server[k]))});
+    }
+  }
+  plan.canImport=plan.conflicts.length===0 && plan.trials.added+plan.sources.added>0;
+  return plan;
+}
+
 export async function syncCloud({storage,owner,remote}) {
   const before = readCloudCache(storage,owner);
   if (!before) throw new Error('rd_cloud_not_initialized');

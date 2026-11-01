@@ -18,13 +18,16 @@ grant select on public.rd_records to authenticated;
 
 -- One atomic append-and-read operation. Serialize per account so returned
 -- revision order cannot skip a concurrently committed record for that account.
-create function public.rd_sync(p_records jsonb default '[]'::jsonb)
+create function public.rd_sync(p_owner uuid, p_records jsonb default '[]'::jsonb)
 returns jsonb language plpgsql security definer set search_path = '' as $$
 declare
   actor uuid := auth.uid(); item jsonb; data jsonb; old_data jsonb;
   item_kind text; rid text; field text; result jsonb; added integer := 0;
 begin
   if actor is null then raise exception 'rd_auth_required' using errcode='28000'; end if;
+  -- Bind queued data to the intended account, including a session change while
+  -- supabase-js obtains/refreshes a token. Never route A's outbox into B's data.
+  if p_owner is distinct from actor then raise exception 'rd_account_changed' using errcode='28000'; end if;
   if jsonb_typeof(p_records) is distinct from 'array' then raise exception 'rd_invalid_batch'; end if;
   if jsonb_array_length(p_records) > 5000 or octet_length(p_records::text) > 10000000 then
     raise exception 'rd_batch_too_large';
@@ -84,6 +87,6 @@ begin
     from public.rd_records where owner_id=actor;
   return result;
 end $$;
-revoke all on function public.rd_sync(jsonb) from public, anon;
-grant execute on function public.rd_sync(jsonb) to authenticated;
+revoke all on function public.rd_sync(uuid,jsonb) from public, anon;
+grant execute on function public.rd_sync(uuid,jsonb) to authenticated;
 commit;
