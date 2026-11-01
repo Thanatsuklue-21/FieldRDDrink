@@ -14,7 +14,9 @@ Separate beverage R&D application for FIELD Café.
 
 ## Storage
 
-The current release remains device-local. Hosted R&D database, authenticated multi-device sync, durable server-side audit history and outbox recovery are still separate production work. FIELD POS data/database must not be reused.
+Without cloud configuration, storage remains device-local. This branch adds opt-in Supabase synchronization of immutable Trials and Evidence for the same signed-in operator across devices, a durable local outbox, conflict rejection, server-side LOCK validation and account-isolated history. Original local records are not uploaded automatically. FIELD POS data/database must not be reused.
+
+See [cloud setup, limits and device acceptance](docs/CLOUD_SYNC_SETUP.md). Code tests and a build do not prove that a hosted database is configured, deployed or accepted on physical devices. Ingredient Master and separate approval/role workflows are outside this first phase.
 
 ## Development
 
@@ -37,3 +39,7 @@ npm run build
 - Formula Evaluator ranks only actually tested trials; PLANNED/RUNNING candidates are excluded. It reports sensory score, confidence and the next validation need.
 - AI R&D Advisor converts actual sensory defects into a **single-variable PLANNED candidate**, explains why that variable is being changed, links available evidence, and blocks duplicate candidates. `SENSORY_LOCKED` and `LOCKED` formulas are never mutated automatically.
 - Historical trials without structured scores remain valid evidence and are labelled as needing structured scoring instead of receiving fabricated numbers.
+
+## Research Coach
+
+The dashboard audits the Trial's linked evidence, shows missing measurements/process controls, verifies an exact one-variable recipe delta, and prepares a baseline comparison plan. Negated/ambiguous feedback asks for clarification; untested and locked trials cannot generate altered recipes. Prepared candidates remain PLANNED and retain a versioned plan/citation snapshot when explicitly saved. See [inspected research sources, evaluation and limitations](docs/RESEARCH_COACH_EVALUATION.md). This is an inspectable rules-based tool, not a trained foundation model or demonstrated superiority over Claude.

@@ -1,0 +1,44 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+import {PGlite} from '@electric-sql/pglite';
+const migration=await readFile(new URL('../supabase/migrations/202611010001_rd_sync.sql',import.meta.url),'utf8');
+const a='00000000-0000-0000-0000-000000000001',b='00000000-0000-0000-0000-000000000002';
+const t=id=>({kind:'trial',payload:{id,menu:'Matcha',status:'PLANNED',changed:'water',formula:'matcha 5 g'}});
+test('PostgreSQL migration: auth, RLS, immutable retries, atomic conflicts and LOCK validation',async()=>{
+  const db=new PGlite();
+  try{
+    await db.exec(`create role anon; create role authenticated; create schema auth;
+      create table auth.users(id uuid primary key);
+      create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$;
+      grant usage on schema auth to authenticated,anon;
+      grant execute on function auth.uid() to authenticated,anon;
+      insert into auth.users values('${a}'),('${b}');`);
+    await db.exec(migration);
+    const as=async id=>{await db.exec('reset role');await db.query("select set_config('request.jwt.claim.sub',$1,false)",[id]);await db.exec('set role authenticated')};
+    let intended=a;
+    const sync=async records=>(await db.query('select public.rd_sync($1::uuid,$2::jsonb) as result',[intended,JSON.stringify(records)])).rows[0].result;
+    await db.exec('set role anon');await assert.rejects(sync([]),/permission denied/);
+    await as('');await assert.rejects(sync([]),/rd_auth_required/);
+    await as(a);
+    const first=await sync([t('T1')]);assert.equal(first.added,1);assert.equal(first.records.length,1);
+    const retry=await sync([t('T1')]);assert.equal(retry.added,0);assert.equal(retry.revision,first.revision);
+    await assert.rejects(sync([t('T2'),{...t('T1'),payload:{...t('T1').payload,formula:'different'}}]),/rd_conflict:trial:T1/);
+    assert.equal((await sync([])).records.length,1,'failed batch rolled back T2');
+    await assert.rejects(sync([t('T2'),t('T2')]),/rd_duplicate_batch_id/);
+    await assert.rejects(sync([{...t('LOCK'),payload:{...t('LOCK').payload,status:'LOCKED'}}]),/rd_lock_gate_missing/);
+    const locked={...t('LOCK').payload,status:'LOCKED',t0:'ok',t5:'ok',t10:'ok',ingredients:'exact SKU',repeatability:true,dilution:true,cupIce:true,costing:true,sop:true,qc:true};
+    assert.equal((await sync([{kind:'trial',payload:locked}])).added,1);
+    await assert.rejects(sync([{kind:'trial',payload:{...locked,id:'FAKE',qc:'true'}}]),/rd_lock_gate_missing/);
+    await assert.rejects(db.exec("update public.rd_records set payload='{}'"),/permission denied/);
+    await assert.rejects(db.exec('delete from public.rd_records'),/permission denied/);
+    await assert.rejects(db.exec("insert into public.rd_records(owner_id,kind,record_id,payload) values('"+a+"','trial','forged','{}')"),/permission denied/);
+    await as(b);assert.equal((await db.query('select * from public.rd_records')).rows.length,0);
+    await assert.rejects(sync([t('A-outbox-must-not-reach-B')]),/rd_account_changed/);
+    intended=b;
+    assert.equal((await sync([])).records.length,0);
+    await sync([t('T1')]);assert.equal((await sync([])).records.length,1,'same ID in a different account is isolated');
+    await as(a);intended=a;assert.equal((await sync([])).records.length,2);
+    intended=null;await assert.rejects(sync([]),/rd_account_changed/);
+  }finally{await db.close()}
+});

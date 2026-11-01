@@ -1,0 +1,69 @@
+{
+  "kind": "authored-local-regression-comparison",
+  "baselineRef": "0fe259962cc5c0cd21d0940821d0829f325f14b6",
+  "cases": 10,
+  "baselinePass": 3,
+  "coachPass": 10,
+  "results": [
+    {
+      "name": "Thai negation",
+      "expectedCanCreate": false,
+      "before": false,
+      "after": true
+    },
+    {
+      "name": "English negation",
+      "expectedCanCreate": false,
+      "before": false,
+      "after": true
+    },
+    {
+      "name": "High score without defect",
+      "expectedCanCreate": false,
+      "before": false,
+      "after": true
+    },
+    {
+      "name": "Notes without actual tasting",
+      "expectedCanCreate": false,
+      "before": false,
+      "after": true
+    },
+    {
+      "name": "Unknown result state",
+      "expectedCanCreate": false,
+      "before": false,
+      "after": true
+    },
+    {
+      "name": "Partially parsed recipe",
+      "expectedCanCreate": false,
+      "before": false,
+      "after": true
+    },
+    {
+      "name": "Specific actual defect",
+      "expectedCanCreate": true,
+      "before": true,
+      "after": true
+    },
+    {
+      "name": "Existing planned candidate",
+      "expectedCanCreate": false,
+      "before": true,
+      "after": true
+    },
+    {
+      "name": "Locked formula",
+      "expectedCanCreate": false,
+      "before": true,
+      "after": true
+    },
+    {
+      "name": "Publisher-domain lookalike",
+      "before": false,
+      "after": true
+    }
+  ],
+  "limitation": "Synthetic authored regression cases, not held-out evaluation, actual tasting, model training or a comparison with Claude/other AI models."
+}
