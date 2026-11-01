@@ -2,18 +2,20 @@ import React,{useEffect,useRef,useState} from 'react';
 import {createClient} from '@supabase/supabase-js';
 import {newCloudCache,readCloudCache,writeCloudCache,queueCloudRecords,syncCloud,withCloudLock,parseRemote,planDeviceImport} from './cloud-sync.js';
 import {mergeImmutableRecords} from './rd-core.js';
+import {previewFieldChatHistory} from './field-chat-history.js';
 
 const url = import.meta.env.VITE_RD_SUPABASE_URL;
 const publicKey = import.meta.env.VITE_RD_SUPABASE_PUBLISHABLE_KEY;
 // Session belongs to this R&D origin and project. No service key in the browser.
 const client = url && publicKey ? createClient(url,publicKey,{auth:{storageKey:'field-rd-auth-v1'}}) : null;
 
-export default function CloudPanel({onReady,getLocalData}) {
+export default function CloudPanel({onReady,getLocalData,onHistoryImportBridge}) {
   const [session,setSession] = useState(null), [email,setEmail] = useState(''), [password,setPassword] = useState('');
   const [message,setMessage] = useState(''), [busy,setBusy] = useState(false), [cache,setCache] = useState(null);
   const [importPreview,setImportPreview] = useState(null);
   const running = useRef(false), generation = useRef(0), sessionRef = useRef(null);
   const onReadyRef = useRef(onReady); onReadyRef.current = onReady;
+  const onHistoryImportBridgeRef=useRef(onHistoryImportBridge);onHistoryImportBridgeRef.current=onHistoryImportBridge;
   const owner = s => url+'|'+s.user.id;
   const report = c => {setCache(c);onReadyRef.current(c)};
   function errorMessage(error) {
@@ -80,6 +82,57 @@ export default function CloudPanel({onReady,getLocalData}) {
       sources:mergeImmutableRecords(current.sources,data.sources,'Evidence').records};
     return {...planDeviceImport(incoming,known),deviceSnapshot:incoming};
   }
+  async function inspectHistory(s) {
+    if(!s||!client)throw new Error('rd_sign_in_required');
+    const data=parseRemote(await callSync(s,[]));
+    const current=readCloudCache(localStorage,owner(s));
+    if(!current)throw new Error('rd_cloud_not_initialized');
+    const known={trials:mergeImmutableRecords(current.trials,data.trials,'Trial').records,
+      sources:mergeImmutableRecords(current.sources,data.sources,'Evidence').records};
+    return previewFieldChatHistory(known.trials,known.sources);
+  }
+  async function previewHistory() {
+    const s=sessionRef.current;
+    if(!s||running.current)throw new Error('rd_sign_in_required');
+    return inspectHistory(s);
+  }
+  async function importHistory(records) {
+    const s=sessionRef.current;
+    if(!s||running.current)throw new Error('rd_sign_in_required');
+    running.current=true;setBusy(true);const g=generation.current;let queued=false;
+    try {
+      const plan=await inspectHistory(s);
+      if(g!==generation.current||sessionRef.current?.user.id!==s.user.id)throw new Error('rd_account_changed');
+      if(plan.conflicts.length)return {plan,imported:false,queued:false};
+      const requested=new Map(records.map(row=>[row.id,row]));
+      const toQueue=plan.incoming.trials.filter(row=>requested.has(row.id));
+      const reviewed=JSON.stringify([...requested.values()]);
+      const currentNew=JSON.stringify(toQueue);
+      if(reviewed!==currentNew)return {plan,imported:false,queued:false,reviewChanged:true};
+      if(!toQueue.length)return {plan,imported:false,queued:false};
+      await withCloudLock(()=>{
+        if(g!==generation.current||sessionRef.current?.user.id!==s.user.id)throw new Error('rd_account_changed');
+        const current=readCloudCache(localStorage,owner(s));
+        localStorage.setItem('field-rd-chat-history-before-'+Date.now(),JSON.stringify({trials:current.trials,sources:current.sources}));
+        const next=queueCloudRecords(localStorage,current,{trials:toQueue,sources:[]});
+        report(next);queued=true;
+      });
+      setImportPreview(null);
+      try {
+        const c=await syncCloud({storage:localStorage,owner:owner(s),remote:batch=>callSync(s,batch)});
+        if(g!==generation.current||sessionRef.current?.user.id!==s.user.id)throw new Error('rd_account_changed');
+        report(c);setMessage('ประวัติ ChatGPT นำเข้าและอ่านยืนยันจาก Cloud แล้ว');
+        return {plan,imported:true,queued:false};
+      } catch(error) {
+        if(g===generation.current)setMessage(errorMessage(error));
+        return {plan,imported:false,queued:true,error:String(error?.message||'rd_sync_failed')};
+      }
+    } finally {running.current=false;if(g===generation.current)setBusy(false)}
+  }
+  useEffect(()=>{
+    onHistoryImportBridgeRef.current?.(client?{previewHistory,importHistory}:null);
+    return ()=>onHistoryImportBridgeRef.current?.(null);
+  },[session?.user.id]);
   async function prepareImport(){
     const s=sessionRef.current;if(!s||running.current)return;
     running.current=true;setBusy(true);const g=generation.current;
