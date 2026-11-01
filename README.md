@@ -14,7 +14,9 @@ Separate beverage R&D application for FIELD Café.
 
 ## Storage
 
-The current release remains device-local. Hosted R&D database, authenticated multi-device sync, durable server-side audit history and outbox recovery are still separate production work. FIELD POS data/database must not be reused.
+Without cloud configuration, storage remains device-local. This branch adds opt-in Supabase synchronization of immutable Trials and Evidence for the same signed-in operator across devices, a durable local outbox, conflict rejection, server-side LOCK validation and account-isolated history. Original local records are not uploaded automatically. FIELD POS data/database must not be reused.
+
+See [cloud setup, limits and device acceptance](docs/CLOUD_SYNC_SETUP.md). Code tests and a build do not prove that a hosted database is configured, deployed or accepted on physical devices. Ingredient Master and separate approval/role workflows are outside this first phase.
 
 ## Development
 

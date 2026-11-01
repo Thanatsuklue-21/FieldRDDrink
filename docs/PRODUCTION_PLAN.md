@@ -49,4 +49,4 @@ Acceptance: create Trial → reload → same Trial; duplicate submit does not cr
 - Verify deployment and runtime errors.
 
 ## Current constraint
-The Vercel connector currently cannot resolve the new field-rd-drink project in its authorized team scope. P2 must not be wired with guessed credentials. Continue P0/P1 safely; provision P2 once the project/database connection is authorized.
+P2 phase 1 code is available in this branch: opt-in Supabase Auth, immutable Trials/Evidence, RLS, append-only RPC, durable outbox and guarded local import. See `docs/CLOUD_SYNC_SETUP.md`. Hosted provisioning, deployment, real-data migration and physical PC/phone/tablet acceptance still require the authorized dedicated R&D connection. Do not infer runtime completion from code or local tests. Never use guessed credentials or FIELD POS data.
