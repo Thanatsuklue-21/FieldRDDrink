@@ -44,3 +44,11 @@ test('repeated preview after a successful import yields no new records',()=>{
   assert.equal(second.trials.added,0);
   assert.equal(second.canImport,false);
 });
+
+test('partial one-ingredient notes cannot silently suppress a historical Trial',()=>{
+  const candidate=FIELD_CHAT_HISTORY[2];
+  const partial={...candidate,id:'TR-partial-coconut',formula:'Yamito 5 g'};
+  const plan=previewFieldChatHistory([partial]);
+  assert.equal(plan.semanticDuplicates.some(row=>row.id===candidate.id),false);
+  assert.equal(plan.incoming.trials.some(row=>row.id===candidate.id),true);
+});
