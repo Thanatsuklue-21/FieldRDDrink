@@ -43,7 +43,9 @@ function recipeFingerprint(row) {
         .replace(/[^\p{L}\p{N}]+/gu,' ').trim();
       return ingredient ? `${ingredient}:${Number(match[2])}` : '';
     }).filter(Boolean).sort();
-  return menu && pairs.length ? `${menu}|${pairs.join('|')}` : null;
+  // One parsed ingredient is too weak to prove recipe equivalence: do not
+  // suppress an import when the existing formula is only a partial note.
+  return menu && pairs.length >= 2 ? `${menu}|${pairs.join('|')}` : null;
 }
 export function previewFieldChatHistory(currentTrials, currentSources=[]) {
   const candidate={trials:FIELD_CHAT_HISTORY,sources:[]};
