@@ -7,13 +7,17 @@ import {previewFieldChatHistory} from './field-chat-history.js';
 const url = import.meta.env.VITE_RD_SUPABASE_URL;
 const publicKey = import.meta.env.VITE_RD_SUPABASE_PUBLISHABLE_KEY;
 // Session belongs to this R&D origin and project. No service key in the browser.
+// supabase-js consumes the recovery hash during createClient's initialization,
+// which can finish before React subscribes and so miss PASSWORD_RECOVERY.
+// Read the marker first so the set-new-password form always appears.
+const recoveryFromUrl = typeof window!=='undefined' && /(?:^|[#&?])type=recovery(?:&|$)/.test(window.location.hash+'&'+window.location.search.slice(1));
 const client = url && publicKey ? createClient(url,publicKey,{auth:{storageKey:'field-rd-auth-v1'}}) : null;
 
 export default function CloudPanel({onReady,getLocalData,onHistoryImportBridge}) {
   const [session,setSession] = useState(null), [email,setEmail] = useState(''), [password,setPassword] = useState('');
   const [message,setMessage] = useState(''), [busy,setBusy] = useState(false), [cache,setCache] = useState(null);
   const [importPreview,setImportPreview] = useState(null);
-  const [recovery,setRecovery] = useState(false), [newPassword,setNewPassword] = useState(''), [confirmPassword,setConfirmPassword] = useState('');
+  const [recovery,setRecovery] = useState(recoveryFromUrl), [newPassword,setNewPassword] = useState(''), [confirmPassword,setConfirmPassword] = useState('');
   const running = useRef(false), generation = useRef(0), sessionRef = useRef(null);
   const onReadyRef = useRef(onReady); onReadyRef.current = onReady;
   const onHistoryImportBridgeRef=useRef(onHistoryImportBridge);onHistoryImportBridgeRef.current=onHistoryImportBridge;
