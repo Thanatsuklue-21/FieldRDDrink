@@ -139,6 +139,10 @@ export default function CloudPanel({onReady,getLocalData,onHistoryImportBridge})
       const toQueue=plan.incoming.trials.filter(row=>requested.has(row.id));
       const reviewed=JSON.stringify([...requested.values()]);
       const currentNew=JSON.stringify(toQueue);
+      // Another tab/device already stored exactly these reviewed records: that is
+      // a completed import, not a changed review. Nothing is written again.
+      const alreadyStored=[...requested.keys()].every(id=>plan.duplicateIds?.includes(id));
+      if(alreadyStored)return {plan,imported:false,queued:false,alreadyImported:true};
       if(reviewed!==currentNew)return {plan,imported:false,queued:false,reviewChanged:true};
       if(!toQueue.length)return {plan,imported:false,queued:false};
       await withCloudLock(()=>{
