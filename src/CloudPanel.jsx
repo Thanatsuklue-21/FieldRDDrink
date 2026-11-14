@@ -13,6 +13,7 @@ export default function CloudPanel({onReady,getLocalData,onHistoryImportBridge})
   const [session,setSession] = useState(null), [email,setEmail] = useState(''), [password,setPassword] = useState('');
   const [message,setMessage] = useState(''), [busy,setBusy] = useState(false), [cache,setCache] = useState(null);
   const [importPreview,setImportPreview] = useState(null);
+  const [recovery,setRecovery] = useState(false), [newPassword,setNewPassword] = useState(''), [confirmPassword,setConfirmPassword] = useState('');
   const running = useRef(false), generation = useRef(0), sessionRef = useRef(null);
   const onReadyRef = useRef(onReady); onReadyRef.current = onReady;
   const onHistoryImportBridgeRef=useRef(onHistoryImportBridge);onHistoryImportBridgeRef.current=onHistoryImportBridge;
@@ -54,7 +55,7 @@ export default function CloudPanel({onReady,getLocalData,onHistoryImportBridge})
       }catch(e){onReadyRef.current(null);setMessage(errorMessage(e));}
     }
     client.auth.getSession().then(({data,error})=>{if(error){if(alive)setMessage(errorMessage(error));}else apply(data.session)});
-    const {data}=client.auth.onAuthStateChange((_event,s)=>apply(s));
+    const {data}=client.auth.onAuthStateChange((event,s)=>{if(event==='PASSWORD_RECOVERY'&&alive)setRecovery(true);apply(s)});
     return()=>{alive=false;generation.current++;data.subscription.unsubscribe()};
   },[]);
   useEffect(()=>{
@@ -71,6 +72,30 @@ export default function CloudPanel({onReady,getLocalData,onHistoryImportBridge})
     e.preventDefault();setBusy(true);setMessage('กำลังเข้าสู่ระบบ…');
     try {const {error}=await client.auth.signInWithPassword({email,password});if(error)throw error;setPassword('');}
     catch(e){setMessage(errorMessage(e));}finally{setBusy(false)}
+  }
+  async function requestPasswordReset(){
+    if(!email.trim()){setMessage('กรอกอีเมลของบัญชี R&D ก่อน แล้วกด “ลืมรหัสผ่าน” อีกครั้ง');return}
+    setBusy(true);setMessage('กำลังส่งอีเมลตั้งรหัสผ่านใหม่…');
+    try {
+      const {error}=await client.auth.resetPasswordForEmail(email.trim(),{redirectTo:window.location.origin+window.location.pathname});
+      if(error)throw error;
+      // Same message whether or not the address has an account.
+      setMessage('ถ้าอีเมลนี้มีบัญชี R&D ระบบได้ส่งลิงก์ตั้งรหัสผ่านใหม่แล้ว · เปิดลิงก์จากอีเมลบนเครื่องนี้');
+    } catch(e){setMessage('ส่งอีเมลไม่สำเร็จ: '+String(e?.message||'reset_failed'))}
+    finally{setBusy(false)}
+  }
+  async function saveNewPassword(e){
+    e.preventDefault();
+    if(newPassword.length<8){setMessage('รหัสผ่านใหม่ต้องยาวอย่างน้อย 8 ตัวอักษร');return}
+    if(newPassword!==confirmPassword){setMessage('รหัสผ่านทั้งสองช่องไม่ตรงกัน');return}
+    setBusy(true);setMessage('กำลังบันทึกรหัสผ่านใหม่…');
+    try {
+      const {error}=await client.auth.updateUser({password:newPassword});
+      if(error)throw error;
+      setRecovery(false);setNewPassword('');setConfirmPassword('');
+      setMessage('ตั้งรหัสผ่านใหม่แล้ว · ใช้รหัสนี้เข้าสู่ระบบบนทุกอุปกรณ์');
+    } catch(e){setMessage('ตั้งรหัสผ่านไม่สำเร็จ: '+String(e?.message||'update_failed'))}
+    finally{setBusy(false)}
   }
   async function inspectLocal(s) {
     const incoming=getLocalData();
@@ -180,10 +205,15 @@ export default function CloudPanel({onReady,getLocalData,onHistoryImportBridge})
   }
   if(!client)return <aside className="cloud-panel"><strong>ข้อมูล R&D ยังอยู่เฉพาะเครื่องนี้</strong><p>ยังไม่ได้ตั้งค่าการเชื่อมฐานกลาง ต้องเชื่อม Supabase สำหรับ R&D ก่อนใช้งานข้ามอุปกรณ์</p></aside>;
   return <aside className="cloud-panel" aria-label="ข้อมูลข้ามอุปกรณ์"><h2>ข้อมูลข้ามอุปกรณ์</h2>
-    {!session?<form onSubmit={signIn}><p>เข้าใช้บัญชี R&D เดียวกันบน PC มือถือ และแท็บเล็ต</p>
+    {recovery&&session?<form onSubmit={saveNewPassword}><p>ตั้งรหัสผ่านใหม่สำหรับ {session.user.email}</p>
+      <label>รหัสผ่านใหม่<input type="password" autoComplete="new-password" minLength={8} required value={newPassword} onChange={e=>setNewPassword(e.target.value)}/></label>
+      <label>ยืนยันรหัสผ่านใหม่<input type="password" autoComplete="new-password" minLength={8} required value={confirmPassword} onChange={e=>setConfirmPassword(e.target.value)}/></label>
+      <button className="primary" disabled={busy}>{busy?'กำลังบันทึก…':'บันทึกรหัสผ่านใหม่'}</button></form>:
+    !session?<form onSubmit={signIn}><p>เข้าใช้บัญชี R&D เดียวกันบน PC มือถือ และแท็บเล็ต</p>
       <label>อีเมล<input type="email" autoComplete="username" required value={email} onChange={e=>setEmail(e.target.value)}/></label>
       <label>รหัสผ่าน<input type="password" autoComplete="current-password" required value={password} onChange={e=>setPassword(e.target.value)}/></label>
-      <button className="primary" disabled={busy}>เข้าสู่ระบบ</button></form>:<>
+      <button className="primary" disabled={busy}>เข้าสู่ระบบ</button>
+      <button className="secondary" type="button" onClick={requestPasswordReset} disabled={busy}>ลืมรหัสผ่าน</button></form>:<>
       <p>{session.user.email}</p><p>รอส่ง {cache?.pending.reduce((n,b)=>n+b.trials.length+b.sources.length,0)??'—'} รายการ · ซิงค์สำเร็จล่าสุด {cache?.lastSync?new Date(cache.lastSync).toLocaleString('th-TH'):'ยังไม่มี'}</p>
       <div className="actions"><button className="primary" onClick={runSync} disabled={busy||!cache}>{busy?'กำลังซิงค์…':'ซิงค์ตอนนี้'}</button>
       <button className="secondary" onClick={prepareImport} disabled={busy||!cache}>ตรวจข้อมูลเดิมก่อนนำเข้า</button>
