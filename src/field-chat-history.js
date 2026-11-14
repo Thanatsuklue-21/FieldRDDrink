@@ -32,20 +32,38 @@ export const FIELD_CHAT_HISTORY = [
 // Conservative recipe fingerprint: ignore punctuation/spacing but require the
 // same menu and the same ingredient-to-gram pairs. Unknown prose stays unknown
 // rather than being guessed into an equivalence.
-function recipeFingerprint(row) {
-  const menu = String(row.menu||'').normalize('NFC').toLocaleLowerCase('th-TH')
-    .replace(/\b(?:16\s*oz|16\s*ออนซ์)\b/g,'').replace(/[^\p{L}\p{N}]+/gu,' ').trim();
+const SIZE_SUFFIX=/(?<![\p{L}\p{N}])16\s*(?:oz|ออนซ์)(?![\p{L}\p{N}])/giu;
+function baseMenu(value,{dropParenthetical=false}={}) {
+  let menu=String(value||'').normalize('NFC').toLocaleLowerCase('th-TH');
+  if(dropParenthetical)menu=menu.replace(/\([^)]*\)/g,' ');
+  return menu.replace(SIZE_SUFFIX,' ').replace(/[^\p{L}\p{N}]+/gu,' ').trim();
+}
+function gramPairs(row) {
   const formula = String(row.formula||'').normalize('NFC').toLocaleLowerCase('th-TH')
     .replace(/^\s*candidate only\s*:\s*/,'');
-  const pairs = [...formula.matchAll(/([^;\n·,]+?)\s*(\d+(?:\.\d+)?)\s*g\b/giu)]
-    .map(match => {
-      const ingredient = match[1].replace(/@\s*\d+(?:\.\d+)?\s*°?c/giu,'')
-        .replace(/[^\p{L}\p{N}]+/gu,' ').trim();
-      return ingredient ? `${ingredient}:${Number(match[2])}` : '';
-    }).filter(Boolean).sort();
+  return [...formula.matchAll(/([^;\n·,]+?)\s*(\d+(?:\.\d+)?)\s*g\b/giu)]
+    .map(match => ({
+      ingredient: match[1].replace(/@\s*\d+(?:\.\d+)?\s*°?c/giu,'').replace(/[^\p{L}\p{N}]+/gu,' ').trim(),
+      grams: Number(match[2])
+    })).filter(pair=>pair.ingredient);
+}
+function recipeFingerprint(row) {
+  const menu = baseMenu(row.menu);
+  const pairs = gramPairs(row).map(pair=>`${pair.ingredient}:${pair.grams}`).sort();
   // One parsed ingredient is too weak to prove recipe equivalence: do not
   // suppress an import when the existing formula is only a partial note.
   return menu && pairs.length >= 2 ? `${menu}|${pairs.join('|')}` : null;
+}
+// Looser signal for the review screen only. The same base menu with the same
+// non-ice gram amounts (e.g. "Crystal 40 g" vs "warm water 40 g") is probably
+// the same recipe written with different ingredient names. This never proves
+// equivalence, so it never auto-suppresses; it only defaults the row to
+// "not selected" and tells the operator which existing Trial to compare.
+const ICE=/(?:^|\s)(?:ice|น้ำแข็ง)(?:\s|$)/u;
+function gramSignature(row) {
+  const menu = baseMenu(row.menu,{dropParenthetical:true});
+  const grams = gramPairs(row).filter(pair=>!ICE.test(pair.ingredient)).map(pair=>pair.grams).sort((a,b)=>a-b);
+  return menu && grams.length >= 3 ? `${menu}|${grams.join('|')}` : null;
 }
 export function previewFieldChatHistory(currentTrials, currentSources=[]) {
   const candidate={trials:FIELD_CHAT_HISTORY,sources:[]};
@@ -61,6 +79,17 @@ export function previewFieldChatHistory(currentTrials, currentSources=[]) {
     }
     return true;
   });
+  const signatures=new Map();
+  for(const row of currentTrials){
+    const signature=gramSignature(row);
+    if(signature)signatures.set(signature,[...(signatures.get(signature)||[]),row.id]);
+  }
+  plan.possibleDuplicates=plan.incoming.trials.flatMap(row=>{
+    const matches=signatures.get(gramSignature(row));
+    return matches?.length?[{id:row.id,menu:row.menu,matches:[...matches]}]:[];
+  });
+  const possible=new Set(plan.possibleDuplicates.map(row=>row.id));
+  plan.defaultSelection=plan.incoming.trials.filter(row=>!possible.has(row.id)).map(row=>row.id);
   plan.trials.added=plan.incoming.trials.length;
   plan.trials.unchanged+=semanticDuplicates.length;
   plan.semanticDuplicates=semanticDuplicates;
@@ -72,8 +101,12 @@ export function previewFieldChatHistory(currentTrials, currentSources=[]) {
   plan.canImport=plan.conflicts.length===0&&plan.trials.added+plan.sources.added>0;
   return plan;
 }
-export function assertHistoricalImportSafe(plan) {
+export function assertHistoricalImportSafe(plan, selectedIds) {
   if (plan.conflicts.length) throw new Error('rd_chat_history_conflict');
-  // Explicit confirmation required in UI before calling existing persistData.
-  return plan.incoming;
+  // Explicit confirmation required in UI before calling the existing sync path.
+  if (selectedIds === undefined) return plan.incoming;
+  const selected = new Set(selectedIds);
+  const unknown = [...selected].filter(id => !plan.incoming.trials.some(row => row.id === id));
+  if (unknown.length) throw new Error('rd_chat_history_selection_invalid');
+  return {...plan.incoming, trials: plan.incoming.trials.filter(row => selected.has(row.id))};
 }

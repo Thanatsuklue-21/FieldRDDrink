@@ -93,12 +93,14 @@ export default function CloudPanel({onReady,getLocalData,onHistoryImportBridge})
   }
   async function previewHistory() {
     const s=sessionRef.current;
-    if(!s||running.current)throw new Error('rd_sign_in_required');
+    if(!s)throw new Error('rd_sign_in_required');
+    if(running.current)throw new Error('rd_busy');
     return inspectHistory(s);
   }
   async function importHistory(records) {
     const s=sessionRef.current;
-    if(!s||running.current)throw new Error('rd_sign_in_required');
+    if(!s)throw new Error('rd_sign_in_required');
+    if(running.current)throw new Error('rd_busy');
     running.current=true;setBusy(true);const g=generation.current;let queued=false;
     try {
       const plan=await inspectHistory(s);
@@ -113,7 +115,10 @@ export default function CloudPanel({onReady,getLocalData,onHistoryImportBridge})
       await withCloudLock(()=>{
         if(g!==generation.current||sessionRef.current?.user.id!==s.user.id)throw new Error('rd_account_changed');
         const current=readCloudCache(localStorage,owner(s));
-        localStorage.setItem('field-rd-chat-history-before-'+Date.now(),JSON.stringify({trials:current.trials,sources:current.sources}));
+        // One rolling pre-import snapshot. Records are append-only on the server,
+        // so this is a convenience copy: a full quota must not block the import,
+        // and repeated imports must not grow localStorage without bound.
+        try{localStorage.setItem('field-rd-chat-history-before',JSON.stringify({at:new Date().toISOString(),trials:current.trials,sources:current.sources}))}catch{}
         const next=queueCloudRecords(localStorage,current,{trials:toQueue,sources:[]});
         report(next);queued=true;
       });
